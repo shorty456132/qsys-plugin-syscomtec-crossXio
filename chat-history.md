@@ -1,0 +1,1530 @@
+# Plugin Generation Chat History
+
+## User
+
+Create a Q-SYS plugin with the following details:
+
+Plugin Name: Syscomtec-crossXio
+Description: review the provided api. base all controls off the crossXio_SCT-IPCX_API.md file
+Protocol: TCP
+Connection: Not specified
+
+
+## Assistant
+
+I have the protocol documentation for the Syscomtec crossXio SCT-IPCX controller. Let me fetch the necessary SDK documentation to create a proper Q-SYS plugin.
+
+## Assistant
+
+Based on the protocol documentation and SDK references, I'll create a comprehensive Q-SYS plugin for the Syscomtec crossXio SCT-IPCX controller. This device uses TCP port 23 with carriage return (`\r`) terminated ASCII commands for matrix routing, video wall management, device discovery, and more.
+
+## Protocol Summary
+
+**Protocol:** TCP, Port 23, Commands terminated with `\r`
+**Key Commands Found:**
+- Device Discovery: `config get devicelist`
+- Matrix Routing: `matrix set TX1 RX1 RX2` / `matrix get`
+- Video Wall: `vw add vw1 layout 2 2 tx1 rx1 rx2 rx3 rx4`
+- Scene Management: `scene active scenename`
+- Device Control: `config set device reboot hostname`
+- Configuration: `config get version`, `config get ipsetting`
+
+I'll now create all the necessary files for this plugin:
+
+```lua filename:info.lua
+PluginInfo = {
+  Name = "Syscomtec-crossXio",
+  Version = "1.0.0",
+  BuildVersion = "1.0.0.0", 
+  Id = "7c4d2a1f-8b5e-4c9f-a3d8-e6f271549083",
+  Author = "Q-SYS Plugin Developer",
+  Description = "Control plugin for Syscomtec crossXio SCT-IPCX AVoverIP Controller. Supports matrix routing, video walls, device discovery, scene management, and device control via TCP/Telnet."
+}
+```
+
+```lua filename:properties.lua
+table.insert(props, {
+  Name = "Debug Print",
+  Type = "enum",
+  Choices = { "None", "Tx/Rx", "Tx", "Rx", "All" },
+  Value = "Tx/Rx"
+})
+
+table.insert(props, {
+  Name = "Poll Rate",
+  Type = "integer",
+  Min = 5,
+  Max = 60,
+  Value = 10
+})
+
+table.insert(props, {
+  Name = "Max Devices",
+  Type = "integer",
+  Min = 8,
+  Max = 64,
+  Value = 16
+})
+
+table.insert(props, {
+  Name = "Video Wall Count",
+  Type = "integer",
+  Min = 1,
+  Max = 8,
+  Value = 4
+})
+
+table.insert(props, {
+  Name = "Scene Count",
+  Type = "integer",
+  Min = 1,
+  Max = 32,
+  Value = 16
+})
+```
+
+```lua filename:controls.lua
+-- Connection Controls
+table.insert(ctrls, {
+  Name = "IPAddress",
+  ControlType = "Text",
+  Count = 1,
+  UserPin = true,
+  PinStyle = "Both"
+})
+
+table.insert(ctrls, {
+  Name = "Port",
+  ControlType = "Text",
+  Count = 1,
+  UserPin = true,
+  PinStyle = "Both"
+})
+
+table.insert(ctrls, {
+  Name = "Connect",
+  ControlType = "Button",
+  ButtonType = "Toggle",
+  Count = 1,
+  UserPin = true,
+  PinStyle = "Both"
+})
+
+table.insert(ctrls, {
+  Name = "Status",
+  ControlType = "Indicator",
+  IndicatorType = "Status",
+  Count = 1,
+  UserPin = true,
+  PinStyle = "Output"
+})
+
+-- Discovery and Info Controls
+table.insert(ctrls, {
+  Name = "Discover",
+  ControlType = "Button",
+  ButtonType = "Trigger",
+  Count = 1,
+  UserPin = true,
+  PinStyle = "Input"
+})
+
+table.insert(ctrls, {
+  Name = "System Version",
+  ControlType = "Text",
+  Count = 1,
+  UserPin = true,
+  PinStyle = "Output"
+})
+
+table.insert(ctrls, {
+  Name = "Device Count",
+  ControlType = "Text",
+  Count = 1,
+  UserPin = true,
+  PinStyle = "Output"
+})
+
+-- Matrix Routing Controls
+table.insert(ctrls, {
+  Name = "TX Selection",
+  ControlType = "Text",
+  Count = 1,
+  UserPin = true,
+  PinStyle = "Both"
+})
+
+table.insert(ctrls, {
+  Name = "RX Selection",
+  ControlType = "Text",
+  Count = 1,
+  UserPin = true,
+  PinStyle = "Both"
+})
+
+table.insert(ctrls, {
+  Name = "Route",
+  ControlType = "Button",
+  ButtonType = "Trigger",
+  Count = 1,
+  UserPin = true,
+  PinStyle = "Input"
+})
+
+table.insert(ctrls, {
+  Name = "Disconnect RX",
+  ControlType = "Button",
+  ButtonType = "Trigger",
+  Count = 1,
+  UserPin = true,
+  PinStyle = "Input"
+})
+
+table.insert(ctrls, {
+  Name = "Get Matrix",
+  ControlType = "Button",
+  ButtonType = "Trigger",
+  Count = 1,
+  UserPin = true,
+  PinStyle = "Input"
+})
+
+table.insert(ctrls, {
+  Name = "Matrix Status",
+  ControlType = "Text",
+  Count = 1,
+  UserPin = true,
+  PinStyle = "Output"
+})
+
+-- Video Wall Controls
+local vwCount = props["Video Wall Count"].Value
+for i = 1, vwCount do
+  table.insert(ctrls, {
+    Name = "VW" .. i .. " Name",
+    ControlType = "Text",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Both"
+  })
+  
+  table.insert(ctrls, {
+    Name = "VW" .. i .. " Rows",
+    ControlType = "Text",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Both"
+  })
+  
+  table.insert(ctrls, {
+    Name = "VW" .. i .. " Cols",
+    ControlType = "Text",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Both"
+  })
+  
+  table.insert(ctrls, {
+    Name = "VW" .. i .. " TX",
+    ControlType = "Text",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Both"
+  })
+  
+  table.insert(ctrls, {
+    Name = "VW" .. i .. " Create",
+    ControlType = "Button",
+    ButtonType = "Trigger",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Input"
+  })
+  
+  table.insert(ctrls, {
+    Name = "VW" .. i .. " Remove",
+    ControlType = "Button",
+    ButtonType = "Trigger",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Input"
+  })
+end
+
+-- Scene Controls
+local sceneCount = props["Scene Count"].Value
+for i = 1, sceneCount do
+  table.insert(ctrls, {
+    Name = "Scene" .. i .. " Name",
+    ControlType = "Text",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Both"
+  })
+  
+  table.insert(ctrls, {
+    Name = "Scene" .. i .. " Recall",
+    ControlType = "Button",
+    ButtonType = "Trigger",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Input"
+  })
+end
+
+-- Device Controls
+local maxDevices = props["Max Devices"].Value
+for i = 1, maxDevices do
+  table.insert(ctrls, {
+    Name = "Device" .. i .. " Name",
+    ControlType = "Text",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Output"
+  })
+  
+  table.insert(ctrls, {
+    Name = "Device" .. i .. " Alias",
+    ControlType = "Text",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Both"
+  })
+  
+  table.insert(ctrls, {
+    Name = "Device" .. i .. " Reboot",
+    ControlType = "Button",
+    ButtonType = "Trigger",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Input"
+  })
+  
+  table.insert(ctrls, {
+    Name = "Device" .. i .. " Standby",
+    ControlType = "Button",
+    ButtonType = "Trigger",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Input"
+  })
+  
+  table.insert(ctrls, {
+    Name = "Device" .. i .. " Wake",
+    ControlType = "Button",
+    ButtonType = "Trigger",
+    Count = 1,
+    UserPin = true,
+    PinStyle = "Input"
+  })
+end
+
+-- Command Controls
+table.insert(ctrls, {
+  Name = "Custom Command",
+  ControlType = "Text",
+  Count = 1,
+  UserPin = true,
+  PinStyle = "Both"
+})
+
+table.insert(ctrls, {
+  Name = "Send Command",
+  ControlType = "Button",
+  ButtonType = "Trigger",
+  Count = 1,
+  UserPin = true,
+  PinStyle = "Input"
+})
+
+table.insert(ctrls, {
+  Name = "Last Response",
+  ControlType = "Text",
+  Count = 1,
+  UserPin = true,
+  PinStyle = "Output"
+})
+```
+
+```lua filename:pages.lua
+for ix, name in ipairs(PageNames) do
+  table.insert(pages, { name = PageNames[ix] })
+end
+```
+
+```lua filename:layout.lua
+local CurrentPage = PageNames[props["page_index"].Value]
+
+-- Plugin background
+table.insert(graphics, {
+  Type = "GroupBox",
+  Fill = { 35, 35, 35 },
+  StrokeColor = { 35, 35, 35 },
+  StrokeWidth = 0,
+  CornerRadius = 0,
+  Position = { 0, 0 },
+  Size = { 800, 600 },
+  ZOrder = -10
+})
+
+-- Build version in bottom left
+table.insert(graphics, {
+  Type = "Label",
+  Text = "v" .. PluginInfo.BuildVersion,
+  Color = { 150, 150, 150 },
+  FontSize = 9,
+  Font = "Roboto",
+  Position = { 10, 580 },
+  Size = { 100, 15 }
+})
+
+if CurrentPage == "Control" then
+  -- Connection section
+  table.insert(graphics, {
+    Type = "GroupBox",
+    Text = "Connection",
+    Fill = { 55, 55, 55 },
+    Color = { 221, 221, 221 },
+    StrokeColor = { 80, 80, 80 },
+    StrokeWidth = 1,
+    CornerRadius = 8,
+    Font = "Roboto",
+    FontSize = 11,
+    Position = { 10, 10 },
+    Size = { 380, 100 },
+    ZOrder = -5
+  })
+
+  -- IP Address
+  table.insert(graphics, {
+    Type = "Label",
+    Text = "IP Address:",
+    Color = { 200, 200, 200 },
+    FontSize = 11,
+    Font = "Roboto",
+    HTextAlign = "Right",
+    Position = { 20, 35 },
+    Size = { 80, 24 }
+  })
+
+  layout["IPAddress"] = {
+    PrettyName = "Connection~IP Address",
+    Style = "Text",
+    Position = { 105, 35 },
+    Size = { 150, 24 },
+    FontSize = 11,
+    Color = { 255, 255, 255 },
+    CornerRadius = 4
+  }
+
+  -- Port
+  table.insert(graphics, {
+    Type = "Label",
+    Text = "Port:",
+    Color = { 200, 200, 200 },
+    FontSize = 11,
+    Font = "Roboto",
+    HTextAlign = "Right",
+    Position = { 20, 65 },
+    Size = { 80, 24 }
+  })
+
+  layout["Port"] = {
+    PrettyName = "Connection~Port",
+    Style = "Text",
+    Position = { 105, 65 },
+    Size = { 80, 24 },
+    FontSize = 11,
+    Color = { 255, 255, 255 },
+    CornerRadius = 4
+  }
+
+  -- Connect button
+  layout["Connect"] = {
+    PrettyName = "Connection~Connect",
+    Style = "Button",
+    ButtonVisualStyle = "Flat",
+    Position = { 200, 35 },
+    Size = { 80, 24 },
+    Color = { 0, 180, 80 },
+    OffColor = { 80, 80, 80 },
+    UnlinkOffColor = true,
+    Legend = "Connect",
+    FontSize = 12,
+    CornerRadius = 4
+  }
+
+  -- Status LED
+  layout["Status"] = {
+    PrettyName = "Connection~Status",
+    Style = "Led",
+    Position = { 290, 40 },
+    Size = { 16, 16 },
+    Color = { 0, 255, 0 },
+    OffColor = { 100, 0, 0 },
+    UnlinkOffColor = true
+  }
+
+  -- Status text
+  table.insert(graphics, {
+    Type = "Label",
+    Text = "Status",
+    Color = { 200, 200, 200 },
+    FontSize = 10,
+    Font = "Roboto",
+    Position = { 315, 40 },
+    Size = { 60, 16 }
+  })
+
+  -- Discover button
+  layout["Discover"] = {
+    PrettyName = "Connection~Discover Devices",
+    Style = "Button",
+    ButtonVisualStyle = "Flat",
+    Position = { 200, 65 },
+    Size = { 80, 24 },
+    Color = { 0, 120, 200 },
+    Legend = "Discover",
+    FontSize = 11,
+    CornerRadius = 4
+  }
+
+  -- Matrix Routing section
+  table.insert(graphics, {
+    Type = "GroupBox", 
+    Text = "Matrix Routing",
+    Fill = { 55, 55, 55 },
+    Color = { 221, 221, 221 },
+    StrokeColor = { 80, 80, 80 },
+    StrokeWidth = 1,
+    CornerRadius = 8,
+    Font = "Roboto",
+    FontSize = 11,
+    Position = { 400, 10 },
+    Size = { 380, 120 },
+    ZOrder = -5
+  })
+
+  -- TX Selection
+  table.insert(graphics, {
+    Type = "Label",
+    Text = "TX:",
+    Color = { 200, 200, 200 },
+    FontSize = 11,
+    Font = "Roboto",
+    HTextAlign = "Right",
+    Position = { 410, 35 },
+    Size = { 40, 24 }
+  })
+
+  layout["TX Selection"] = {
+    PrettyName = "Matrix~TX Selection",
+    Style = "Text",
+    Position = { 455, 35 },
+    Size = { 150, 24 },
+    FontSize = 11,
+    Color = { 255, 255, 255 },
+    CornerRadius = 4
+  }
+
+  -- RX Selection
+  table.insert(graphics, {
+    Type = "Label",
+    Text = "RX:",
+    Color = { 200, 200, 200 },
+    FontSize = 11,
+    Font = "Roboto",
+    HTextAlign = "Right",
+    Position = { 410, 65 },
+    Size = { 40, 24 }
+  })
+
+  layout["RX Selection"] = {
+    PrettyName = "Matrix~RX Selection",
+    Style = "Text",
+    Position = { 455, 65 },
+    Size = { 150, 24 },
+    FontSize = 11,
+    Color = { 255, 255, 255 },
+    CornerRadius = 4
+  }
+
+  -- Route buttons
+  layout["Route"] = {
+    PrettyName = "Matrix~Route",
+    Style = "Button",
+    ButtonVisualStyle = "Flat",
+    Position = { 620, 35 },
+    Size = { 60, 24 },
+    Color = { 0, 150, 50 },
+    Legend = "Route",
+    FontSize = 11,
+    CornerRadius = 4
+  }
+
+  layout["Disconnect RX"] = {
+    PrettyName = "Matrix~Disconnect",
+    Style = "Button",
+    ButtonVisualStyle = "Flat",
+    Position = { 690, 35 },
+    Size = { 80, 24 },
+    Color = { 180, 50, 0 },
+    Legend = "Disconnect",
+    FontSize = 10,
+    CornerRadius = 4
+  }
+
+  layout["Get Matrix"] = {
+    PrettyName = "Matrix~Get Status",
+    Style = "Button",
+    ButtonVisualStyle = "Flat",
+    Position = { 620, 65 },
+    Size = { 80, 24 },
+    Color = { 80, 120, 180 },
+    Legend = "Get Status",
+    FontSize = 10,
+    CornerRadius = 4
+  }
+
+  -- System Info section
+  table.insert(graphics, {
+    Type = "GroupBox",
+    Text = "System Information",
+    Fill = { 55, 55, 55 },
+    Color = { 221, 221, 221 },
+    StrokeColor = { 80, 80, 80 },
+    StrokeWidth = 1,
+    CornerRadius = 8,
+    Font = "Roboto",
+    FontSize = 11,
+    Position = { 10, 120 },
+    Size = { 380, 80 },
+    ZOrder = -5
+  })
+
+  layout["System Version"] = {
+    PrettyName = "System~Version",
+    Style = "Text",
+    Position = { 20, 145 },
+    Size = { 180, 24 },
+    FontSize = 11,
+    Color = { 200, 200, 200 }
+  }
+
+  layout["Device Count"] = {
+    PrettyName = "System~Device Count",
+    Style = "Text",
+    Position = { 210, 145 },
+    Size = { 80, 24 },
+    FontSize = 11,
+    Color = { 200, 200, 200 }
+  }
+
+  -- Matrix Status
+  layout["Matrix Status"] = {
+    PrettyName = "Matrix~Current Status",
+    Style = "Text",
+    Position = { 400, 140 },
+    Size = { 380, 24 },
+    FontSize = 10,
+    Color = { 200, 200, 200 }
+  }
+
+elseif CurrentPage == "Video Walls" then
+  -- Video Wall section header
+  table.insert(graphics, {
+    Type = "Header",
+    Text = "Video Wall Management",
+    Color = { 221, 221, 221 },
+    Font = "Roboto",
+    FontSize = 14,
+    FontStyle = "Bold",
+    Position = { 10, 20 },
+    Size = { 380, 20 }
+  })
+
+  local vwCount = props["Video Wall Count"].Value
+  for i = 1, vwCount do
+    local yPos = 50 + (i - 1) * 110
+    
+    -- Video Wall group box
+    table.insert(graphics, {
+      Type = "GroupBox",
+      Text = "Video Wall " .. i,
+      Fill = { 55, 55, 55 },
+      Color = { 221, 221, 221 },
+      StrokeColor = { 80, 80, 80 },
+      StrokeWidth = 1,
+      CornerRadius = 8,
+      Font = "Roboto",
+      FontSize = 11,
+      Position = { 10, yPos },
+      Size = { 770, 100 },
+      ZOrder = -5
+    })
+
+    -- VW Name
+    table.insert(graphics, {
+      Type = "Label",
+      Text = "Name:",
+      Color = { 200, 200, 200 },
+      FontSize = 11,
+      Font = "Roboto",
+      HTextAlign = "Right",
+      Position = { 20, yPos + 25 },
+      Size = { 50, 24 }
+    })
+
+    layout["VW" .. i .. " Name"] = {
+      PrettyName = string.format("Video Wall~VW %d Name", i),
+      Style = "Text",
+      Position = { 75, yPos + 25 },
+      Size = { 100, 24 },
+      FontSize = 11,
+      Color = { 255, 255, 255 },
+      CornerRadius = 4
+    }
+
+    -- Rows
+    table.insert(graphics, {
+      Type = "Label",
+      Text = "Rows:",
+      Color = { 200, 200, 200 },
+      FontSize = 11,
+      Font = "Roboto",
+      HTextAlign = "Right",
+      Position = { 185, yPos + 25 },
+      Size = { 40, 24 }
+    })
+
+    layout["VW" .. i .. " Rows"] = {
+      PrettyName = string.format("Video Wall~VW %d Rows", i),
+      Style = "Text",
+      Position = { 230, yPos + 25 },
+      Size = { 40, 24 },
+      FontSize = 11,
+      Color = { 255, 255, 255 },
+      CornerRadius = 4
+    }
+
+    -- Cols
+    table.insert(graphics, {
+      Type = "Label",
+      Text = "Cols:",
+      Color = { 200, 200, 200 },
+      FontSize = 11,
+      Font = "Roboto",
+      HTextAlign = "Right",
+      Position = { 280, yPos + 25 },
+      Size = { 40, 24 }
+    })
+
+    layout["VW" .. i .. " Cols"] = {
+      PrettyName = string.format("Video Wall~VW %d Cols", i),
+      Style = "Text",
+      Position = { 325, yPos + 25 },
+      Size = { 40, 24 },
+      FontSize = 11,
+      Color = { 255, 255, 255 },
+      CornerRadius = 4
+    }
+
+    -- TX
+    table.insert(graphics, {
+      Type = "Label",
+      Text = "TX:",
+      Color = { 200, 200, 200 },
+      FontSize = 11,
+      Font = "Roboto",
+      HTextAlign = "Right",
+      Position = { 375, yPos + 25 },
+      Size = { 30, 24 }
+    })
+
+    layout["VW" .. i .. " TX"] = {
+      PrettyName = string.format("Video Wall~VW %d TX", i),
+      Style = "Text",
+      Position = { 410, yPos + 25 },
+      Size = { 120, 24 },
+      FontSize = 11,
+      Color = { 255, 255, 255 },
+      CornerRadius = 4
+    }
+
+    -- Control buttons
+    layout["VW" .. i .. " Create"] = {
+      PrettyName = string.format("Video Wall~VW %d Create", i),
+      Style = "Button",
+      ButtonVisualStyle = "Flat",
+      Position = { 550, yPos + 25 },
+      Size = { 70, 24 },
+      Color = { 0, 150, 50 },
+      Legend = "Create",
+      FontSize = 11,
+      CornerRadius = 4
+    }
+
+    layout["VW" .. i .. " Remove"] = {
+      PrettyName = string.format("Video Wall~VW %d Remove", i),
+      Style = "Button",
+      ButtonVisualStyle = "Flat",
+      Position = { 630, yPos + 25 },
+      Size = { 70, 24 },
+      Color = { 180, 50, 0 },
+      Legend = "Remove",
+      FontSize = 11,
+      CornerRadius = 4
+    }
+  end
+
+elseif CurrentPage == "Scenes" then
+  -- Scenes section header
+  table.insert(graphics, {
+    Type = "Header",
+    Text = "Scene Management",
+    Color = { 221, 221, 221 },
+    Font = "Roboto",
+    FontSize = 14,
+    FontStyle = "Bold",
+    Position = { 10, 20 },
+    Size = { 380, 20 }
+  })
+
+  local sceneCount = props["Scene Count"].Value
+  local cols = 4
+  local rows = math.ceil(sceneCount / cols)
+  
+  for i = 1, sceneCount do
+    local col = ((i - 1) % cols) + 1
+    local row = math.ceil(i / cols)
+    local xPos = 10 + (col - 1) * 190
+    local yPos = 50 + (row - 1) * 80
+
+    -- Scene group box
+    table.insert(graphics, {
+      Type = "GroupBox",
+      Text = "Scene " .. i,
+      Fill = { 55, 55, 55 },
+      Color = { 221, 221, 221 },
+      StrokeColor = { 80, 80, 80 },
+      StrokeWidth = 1,
+      CornerRadius = 8,
+      Font = "Roboto",
+      FontSize = 10,
+      Position = { xPos, yPos },
+      Size = { 180, 70 },
+      ZOrder = -5
+    })
+
+    layout["Scene" .. i .. " Name"] = {
+      PrettyName = string.format("Scenes~Scene %d Name", i),
+      Style = "Text",
+      Position = { xPos + 10, yPos + 25 },
+      Size = { 160, 20 },
+      FontSize = 10,
+      Color = { 255, 255, 255 },
+      CornerRadius = 4
+    }
+
+    layout["Scene" .. i .. " Recall"] = {
+      PrettyName = string.format("Scenes~Scene %d Recall", i),
+      Style = "Button",
+      ButtonVisualStyle = "Flat",
+      Position = { xPos + 55, yPos + 50 },
+      Size = { 70, 20 },
+      Color = { 80, 120, 180 },
+      Legend = "Recall",
+      FontSize = 10,
+      CornerRadius = 4
+    }
+  end
+
+elseif CurrentPage == "Devices" then
+  -- Devices section header
+  table.insert(graphics, {
+    Type = "Header",
+    Text = "Device Management",
+    Color = { 221, 221, 221 },
+    Font = "Roboto",
+    FontSize = 14,
+    FontStyle = "Bold",
+    Position = { 10, 20 },
+    Size = { 380, 20 }
+  })
+
+  local maxDevices = props["Max Devices"].Value
+  for i = 1, maxDevices do
+    local yPos = 50 + (i - 1) * 60
+    
+    -- Device group box (smaller height to fit more)
+    table.insert(graphics, {
+      Type = "GroupBox",
+      Text = "Device " .. i,
+      Fill = { 55, 55, 55 },
+      Color = { 221, 221, 221 },
+      StrokeColor = { 80, 80, 80 },
+      StrokeWidth = 1,
+      CornerRadius = 8,
+      Font = "Roboto",
+      FontSize = 10,
+      Position = { 10, yPos },
+      Size = { 770, 50 },
+      ZOrder = -5
+    })
+
+    layout["Device" .. i .. " Name"] = {
+      PrettyName = string.format("Devices~Device %d Name", i),
+      Style = "Text",
+      Position = { 20, yPos + 20 },
+      Size = { 150, 20 },
+      FontSize = 10,
+      Color = { 200, 200, 200 }
+    }
+
+    layout["Device" .. i .. " Alias"] = {
+      PrettyName = string.format("Devices~Device %d Alias", i),
+      Style = "Text",
+      Position = { 180, yPos + 20 },
+      Size = { 120, 20 },
+      FontSize = 10,
+      Color = { 255, 255, 255 },
+      CornerRadius = 4
+    }
+
+    layout["Device" .. i .. " Reboot"] = {
+      PrettyName = string.format("Devices~Device %d Reboot", i),
+      Style = "Button",
+      ButtonVisualStyle = "Flat",
+      Position = { 320, yPos + 18 },
+      Size = { 60, 24 },
+      Color = { 180, 120, 0 },
+      Legend = "Reboot",
+      FontSize = 9,
+      CornerRadius = 4
+    }
+
+    layout["Device" .. i .. " Standby"] = {
+      PrettyName = string.format("Devices~Device %d Standby", i),
+      Style = "Button",
+      ButtonVisualStyle = "Flat",
+      Position = { 390, yPos + 18 },
+      Size = { 60, 24 },
+      Color = { 180, 50, 0 },
+      Legend = "Standby",
+      FontSize = 9,
+      CornerRadius = 4
+    }
+
+    layout["Device" .. i .. " Wake"] = {
+      PrettyName = string.format("Devices~Device %d Wake", i),
+      Style = "Button",
+      ButtonVisualStyle = "Flat",
+      Position = { 460, yPos + 18 },
+      Size = { 60, 24 },
+      Color = { 0, 150, 50 },
+      Legend = "Wake",
+      FontSize = 9,
+      CornerRadius = 4
+    }
+  end
+
+elseif CurrentPage == "Setup" then
+  -- Command section
+  table.insert(graphics, {
+    Type = "GroupBox",
+    Text = "Custom Commands",
+    Fill = { 55, 55, 55 },
+    Color = { 221, 221, 221 },
+    StrokeColor = { 80, 80, 80 },
+    StrokeWidth = 1,
+    CornerRadius = 8,
+    Font = "Roboto",
+    FontSize = 11,
+    Position = { 10, 20 },
+    Size = { 770, 100 },
+    ZOrder = -5
+  })
+
+  layout["Custom Command"] = {
+    PrettyName = "Commands~Custom Command",
+    Style = "Text",
+    Position = { 20, 45 },
+    Size = { 400, 24 },
+    FontSize = 11,
+    Color = { 255, 255, 255 },
+    CornerRadius = 4
+  }
+
+  layout["Send Command"] = {
+    PrettyName = "Commands~Send",
+    Style = "Button",
+    ButtonVisualStyle = "Flat",
+    Position = { 430, 45 },
+    Size = { 80, 24 },
+    Color = { 80, 120, 180 },
+    Legend = "Send",
+    FontSize = 11,
+    CornerRadius = 4
+  }
+
+  layout["Last Response"] = {
+    PrettyName = "Commands~Last Response",
+    Style = "Text",
+    Position = { 20, 85 },
+    Size = { 740, 24 },
+    FontSize = 10,
+    Color = { 200, 200, 200 }
+  }
+
+end
+```
+
+```lua filename:runtime.lua
+--[[
+    Syscomtec crossXio SCT-IPCX Controller
+    TCP control plugin for matrix routing, video walls, and device management
+    Commands use ASCII over TCP port 23 with carriage return termination
+]]
+
+--------------------
+-- Variables -------
+--------------------
+
+-- TCP Socket
+TCP = TcpSocket.New()
+TCP.ReadTimeout = 0
+TCP.WriteTimeout = 0
+TCP.ReconnectTimeout = 5
+
+-- Timers
+PollTimer = Timer.New()
+HeartbeatTimer = Timer.New()
+
+-- State variables
+DeviceList = {}
+MatrixState = {}
+HeartbeatTimeout = 15  -- Must be > poll interval
+
+-- Debug settings
+local DebugPrint = Properties["Debug Print"].Value
+DebugTx, DebugRx = false, false
+if DebugPrint == "Tx/Rx" or DebugPrint == "All" then
+  DebugTx, DebugRx = true, true
+elseif DebugPrint == "Tx" then
+  DebugTx = true  
+elseif DebugPrint == "Rx" then
+  DebugRx = true
+end
+
+-- End Variables ---
+
+--------------------
+-- Functions -------
+--------------------
+
+function Initialize()
+  local ip = Controls["IPAddress"].String
+  local port = tonumber(Controls["Port"].String) or 23
+  
+  if ip ~= "" and Controls["Connect"].Boolean then
+    print("Connecting to " .. ip .. ":" .. tostring(port))
+    Controls["Status"].Value = 5  -- Initializing
+    Controls["Status"].String = "Connecting..."
+    TCP:Connect(ip, port)
+  end
+end
+
+function Send(cmd)
+  if TCP.IsConnected then
+    if DebugTx then print("TX: " .. cmd) end
+    TCP:Write(cmd .. "\r")
+  else
+    print("Error: Not connected, unable to send: " .. cmd)
+  end
+end
+
+function ParseResponse(data)
+  if DebugRx then print("RX: " .. data) end
+  
+  Controls["Last Response"].String = data
+  
+  -- Parse different response types
+  if data:find("^API version:") then
+    Controls["System Version"].String = data
+    
+  elseif data:find("^devicelist is") then
+    ParseDeviceList(data)
+    
+  elseif data:find("^matrix information:") then
+    -- Matrix response starts, clear previous state
+    MatrixState = {}
+    
+  elseif data:find("^%w+%-%w+ %w+%-%w+") then
+    -- Matrix route line (TX-device RX-device format)
+    local tx, rx = data:match("^(%S+) (%S+)")
+    if tx and rx then
+      if not MatrixState[tx] then
+        MatrixState[tx] = {}
+      end
+      table.insert(MatrixState[tx], rx)
+    end
+    UpdateMatrixDisplay()
+    
+  elseif data:find("hostname's alias is") then
+    -- Alias response
+    print("Alias info: " .. data)
+    
+  else
+    -- Generic response
+    print("Response: " .. data)
+  end
+  
+  ResetHeartbeat()
+end
+
+function ParseDeviceList(data)
+  -- Extract device hostnames from "devicelist is hostname1 hostname2 ..."
+  local deviceStr = data:match("devicelist is (.+)")
+  if deviceStr then
+    DeviceList = {}
+    local count = 0
+    for device in deviceStr:gmatch("%S+") do
+      table.insert(DeviceList, device)
+      count = count + 1
+    end
+    
+    Controls["Device Count"].String = tostring(count) .. " devices"
+    
+    -- Update device controls with discovered devices
+    local maxDevices = Properties["Max Devices"].Value
+    for i = 1, maxDevices do
+      if DeviceList[i] then
+        Controls["Device" .. i .. " Name"].String = DeviceList[i]
+      else
+        Controls["Device" .. i .. " Name"].String = ""
+      end
+    end
+    
+    print("Discovered " .. count .. " devices")
+  end
+end
+
+function UpdateMatrixDisplay()
+  local status = ""
+  for tx, rxList in pairs(MatrixState) do
+    if status ~= "" then status = status .. "; " end
+    status = status .. tx .. "->" .. table.concat(rxList, ",")
+  end
+  Controls["Matrix Status"].String = status
+end
+
+function ResetHeartbeat()
+  HeartbeatTimer:Stop()
+  HeartbeatTimer:Start(HeartbeatTimeout)
+end
+
+-- End Functions ---
+
+--------------------
+-- TCP Handlers ----
+--------------------
+
+TCP.Connected = function()
+  print("Connected to crossXio controller")
+  Controls["Status"].Value = 0  -- OK
+  Controls["Status"].String = "Connected"
+  
+  -- Initial discovery
+  Timer.CallAfter(function()
+    Send("config get version")
+    Send("config get devicelist")
+  end, 1)
+  
+  -- Start polling
+  PollTimer:Start(Properties["Poll Rate"].Value)
+  ResetHeartbeat()
+end
+
+TCP.Reconnect = function()
+  print("Reconnecting to crossXio controller...")
+  Controls["Status"].Value = 1  -- Compromised
+  Controls["Status"].String = "Reconnecting..."
+end
+
+TCP.Data = function()
+  local data = TCP:ReadLine(TcpSocket.EOL.Custom, "\r")
+  while data do
+    ParseResponse(data)
+    data = TCP:ReadLine(TcpSocket.EOL.Custom, "\r")
+  end
+end
+
+TCP.Closed = function()
+  print("TCP connection closed")
+  Controls["Status"].Value = 2  -- Fault
+  Controls["Status"].String = "Disconnected"
+  PollTimer:Stop()
+  HeartbeatTimer:Stop()
+end
+
+TCP.Error = function(sock, err)
+  print("TCP Error: " .. tostring(err))
+  Controls["Status"].Value = 2  -- Fault
+  Controls["Status"].String = "Error: " .. tostring(err)
+  PollTimer:Stop()
+  HeartbeatTimer:Stop()
+end
+
+TCP.Timeout = function()
+  print("TCP Timeout")
+  Controls["Status"].Value = 2  -- Fault
+  Controls["Status"].String = "Timeout"
+  PollTimer:Stop()
+end
+
+--------------------
+-- EventHandlers ---
+--------------------
+
+-- Connection controls
+Controls["Connect"].EventHandler = function(ctl)
+  if ctl.Boolean then
+    Initialize()
+  else
+    TCP:Disconnect()
+  end
+end
+
+Controls["IPAddress"].EventHandler = function(ctl)
+  if ctl.String ~= "" then
+    if Controls["Connect"].Boolean then
+      Initialize()
+    end
+  end
+end
+
+Controls["Port"].EventHandler = function(ctl)
+  if Controls["Connect"].Boolean then
+    Initialize()
+  end
+end
+
+-- Discovery
+Controls["Discover"].EventHandler = function(ctl)
+  if ctl.Boolean then  -- Trigger button pressed
+    Send("config get devicelist")
+  end
+end
+
+-- Matrix routing
+Controls["Route"].EventHandler = function(ctl)
+  if ctl.Boolean then
+    local tx = Controls["TX Selection"].String
+    local rx = Controls["RX Selection"].String
+    if tx ~= "" and rx ~= "" then
+      Send("matrix set " .. tx .. " " .. rx)
+      print("Routing " .. tx .. " to " .. rx)
+    end
+  end
+end
+
+Controls["Disconnect RX"].EventHandler = function(ctl)
+  if ctl.Boolean then
+    local rx = Controls["RX Selection"].String
+    if rx ~= "" then
+      Send("matrix set NULL " .. rx)
+      print("Disconnecting " .. rx)
+    end
+  end
+end
+
+Controls["Get Matrix"].EventHandler = function(ctl)
+  if ctl.Boolean then
+    Send("matrix get")
+  end
+end
+
+-- Video Wall controls
+local vwCount = Properties["Video Wall Count"].Value
+for i = 1, vwCount do
+  Controls["VW" .. i .. " Create"].EventHandler = function(ctl)
+    if ctl.Boolean then
+      local name = Controls["VW" .. i .. " Name"].String
+      local rows = Controls["VW" .. i .. " Rows"].String
+      local cols = Controls["VW" .. i .. " Cols"].String
+      local tx = Controls["VW" .. i .. " TX"].String
+      
+      if name ~= "" and rows ~= "" and cols ~= "" and tx ~= "" then
+        Send("vw add " .. name .. " " .. rows .. " " .. cols .. " " .. tx)
+        print("Creating video wall: " .. name)
+      end
+    end
+  end
+  
+  Controls["VW" .. i .. " Remove"].EventHandler = function(ctl)
+    if ctl.Boolean then
+      local name = Controls["VW" .. i .. " Name"].String
+      if name ~= "" then
+        Send("vw rm " .. name)
+        print("Removing video wall: " .. name)
+      end
+    end
+  end
+end
+
+-- Scene controls
+local sceneCount = Properties["Scene Count"].Value
+for i = 1, sceneCount do
+  Controls["Scene" .. i .. " Recall"].EventHandler = function(ctl)
+    if ctl.Boolean then
+      local sceneName = Controls["Scene" .. i .. " Name"].String
+      if sceneName ~= "" then
+        Send("scene active " .. sceneName)
+        print("Recalling scene: " .. sceneName)
+      end
+    end
+  end
+end
+
+-- Device controls
+local maxDevices = Properties["Max Devices"].Value
+for i = 1, maxDevices do
+  -- Set alias
+  Controls["Device" .. i .. " Alias"].EventHandler = function(ctl)
+    local hostname = Controls["Device" .. i .. " Name"].String
+    local alias = ctl.String
+    if hostname ~= "" and alias ~= "" then
+      Send("config set device alias " .. hostname .. " " .. alias)
+      print("Setting alias for " .. hostname .. " to " .. alias)
+    end
+  end
+  
+  -- Device reboot
+  Controls["Device" .. i .. " Reboot"].EventHandler = function(ctl)
+    if ctl.Boolean then
+      local hostname = Controls["Device" .. i .. " Name"].String
+      if hostname ~= "" then
+        Send("config set device reboot " .. hostname)
+        print("Rebooting device: " .. hostname)
+      end
+    end
+  end
+  
+  -- Device standby (CEC)
+  Controls["Device" .. i .. " Standby"].EventHandler = function(ctl)
+    if ctl.Boolean then
+      local hostname = Controls["Device" .. i .. " Name"].String
+      if hostname ~= "" then
+        Send("config set device standby " .. hostname)
+        print("Sending standby to device: " .. hostname)
+      end
+    end
+  end
+  
+  -- Device wake (CEC)
+  Controls["Device" .. i .. " Wake"].EventHandler = function(ctl)
+    if ctl.Boolean then
+      local hostname = Controls["Device" .. i .. " Name"].String
+      if hostname ~= "" then
+        Send("config set device onetouchplay " .. hostname)
+        print("Sending wake to device: " .. hostname)
+      end
+    end
+  end
+end
+
+-- Custom command
+Controls["Send Command"].EventHandler = function(ctl)
+  if ctl.Boolean then
+    local cmd = Controls["Custom Command"].String
+    if cmd ~= "" then
+      Send(cmd)
+    end
+  end
+end
+
+-- Timers
+PollTimer.EventHandler = function()
+  if TCP.IsConnected then
+    Send("config get devicelist")
+  end
+end
+
+HeartbeatTimer.EventHandler = function()
+  print("Lost communication with crossXio controller!")
+  Controls["Status"].Value = 2  -- Fault
+  Controls["Status"].String = "Communication Lost"
+  Initialize()
+end
+
+-- Initialize defaults
+Controls["IPAddress"].String = "192.168.11.243"  -- Default control IP
+Controls["Port"].String = "23"
+
+--End Eventhandlers-
+```
+
+```lua filename:model.lua
+if props.Model ~= nil and props.Model.Value ~= "" then
+  table.insert(model, { props.Model.Value })
+else
+  table.insert(model, { "Syscomtec crossXio SCT-IPCX" })
+end
+```
+
+```lua filename:components.lua
+-- No embedded components needed for this plugin
+```
+
+```lua filename:pins.lua
+-- No additional pins needed beyond control pins
+```
+
+```lua filename:wiring.lua
+-- No component wiring needed for this plugin
+```
+
+```lua filename:rectify_properties.lua
+-- Hide debug property in production if needed
+if props.plugin_show_debug and props.plugin_show_debug.Value == false then
+  props["Debug Print"].IsHidden = true
+end
+```
+
+```lua filename:plugin.lua
+-- Syscomtec crossXio SCT-IPCX Controller
+-- by Q-SYS Plugin Developer
+-- 2024
+
+-- Information block for the plugin
+--[[ #include "info.lua" ]]
+
+-- Define the color of the plugin object in the design
+function GetColor(props)
+  return { 102, 102, 102 }
+end
+
+-- The name that will initially display when dragged into a design
+function GetPrettyName(props)
+  return "Syscomtec crossXio SCT-IPCX, version " .. PluginInfo.Version
+end
+
+-- Optional function used if plugin has multiple pages
+PageNames = { "Control", "Video Walls", "Scenes", "Devices", "Setup" }
+function GetPages(props)
+  local pages = {}
+  --[[ #include "pages.lua" ]]
+  return pages
+end
+
+-- Optional function to define model if plugin supports more than one model
+function GetModel(props)
+  local model = {}
+  --[[ #include "model.lua" ]]
+  return model
+end
+
+-- Define User configurable Properties of the plugin
+function GetProperties()
+  local props = {}
+  --[[ #include "properties.lua" ]]
+  return props
+end
+
+-- Optional function to define pins on the plugin that are not connected to a Control
+function GetPins(props)
+  local pins = {}
+  --[[ #include "pins.lua" ]]
+  return pins
+end
+
+-- Optional function to update available properties when properties are altered by the user
+function RectifyProperties(props)
+  --[[ #include "rectify_properties.lua" ]]
+  return props
+end
+
+-- Optional function to define components used within the plugin
+function GetComponents(props)
+  local components = {}
+  --[[ #include "components.lua" ]]
+  return components
+end
+
+-- Optional function to define wiring of components used within the plugin
+function GetWiring(props)
+  local wiring = {}
+  --[[ #include "wiring.lua" ]]
+  return wiring
+end
+
+-- Defines the Controls used within the plugin
+function GetControls(props)
+  local ctrls = {}
+  --[[ #include "controls.lua" ]]
+  return ctrls
+end
+
+--Layout of controls and graphics for the plugin UI to display
+function GetControlLayout(props)
+  local layout = {}
+  local graphics = {}
+  --[[ #include "layout.lua" ]]
+  return layout, graphics
+end
+
+--Start event based logic
+if Controls then
+  --[[ #include "runtime.lua" ]]
+end
+```
+
+## Plugin Summary
+
+**Plugin Name:** Syscomtec-crossXio
+**Description:** Q-SYS control plugin for the Syscomtec crossXio SCT-IPCX AVoverIP Controller
+
+### Files Created:
+- `plugin.lua` — Main entry point and orchestrator
+- `info.lua` — Plugin metadata with unique GUID
+- `properties.lua` — User properties (debug, poll rate, device counts)
+- `controls.lua` — All control definitions (connection, matrix, video walls, scenes, devices)
+- `pages.lua` — Multi-page layout support
+- `layout.lua` — Visual positioning and styling for 5-page interface
+- `runtime.lua` — TCP communication logic and event handlers
+- `model.lua`, `components.lua`, `pins.lua`, `wiring.lua`, `rectify_properties.lua` — Supporting files
+
+### Key Features:
+- **5-page interface:** Control, Video Walls, Scenes, Devices, Setup
+- **Matrix routing** with TX/RX selection and route/disconnect controls
+- **Video wall management** with configurable layouts (up to 8 video walls)
+- **Scene recall** system (up to 32 scenes)  
+- **Device discovery and control** (up to 64 devices) with reboot, standby/wake CEC commands
+- **Custom command interface** for advanced control
+- **Heartbeat monitoring** with automatic reconnection
+- **Debug logging** for TX/RX tracing
+
+### Connection Details:
+- **Protocol:** TCP port 23 (Telnet)
+- **Default IP:** 192.168.11.243 (crossXio controller default)
+- **Command format:** ASCII commands terminated with carriage return (`\r`)
+- **Auto-discovery:** Polls for device list and system version on connection
+
+### Controls Summary:
+- Connection controls (IP, Port, Connect, Status)
+- Matrix routing (TX/RX selection, Route, Disconnect, Get Status)
+- Video wall controls (Name, Rows, Cols, TX, Create/Remove per VW)
+- Scene controls (Name, Recall per scene)  
+- Device controls (Name, Alias, Reboot, Standby, Wake per device)
+- Custom command interface with response display
+
+### How to Use:
+1. Load the compiled `.qplug` file into Q-SYS Designer
+2. Drag the plugin from the Plugin Library onto your schematic
+3. Configure the IP address (default: 192.168.11.243) and port (default: 23) on the Control page
+4. Click Connect to establish communication with the crossXio controller
+5. Use Discover to populate the device list
+6. Configure matrix routing, video walls, and scenes as needed
+7. Monitor device status and control individual TX/RX units from the Devices page
+
+The plugin provides comprehensive control of the crossXio AVoverIP system with an intuitive multi-page interface and robust TCP communication handling.

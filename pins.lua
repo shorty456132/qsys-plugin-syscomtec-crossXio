@@ -1,0 +1,1 @@
+-- No additional pins needed beyond control pins
